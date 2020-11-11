@@ -1,0 +1,50 @@
+---
+- hosts: tag_environment_example
+  gather_facts: false
+  tasks:
+    - name: remove ec2 instance
+      delegate_to: localhost
+      ec2:
+        state: absent
+        instance_id: "{{ instance_id }}"
+        region: "{{ placement.region }}"
+
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - ec2_vpc_igw_info:
+        filters:
+          tag:environment: "example"
+      register: igw
+
+    - name: remove gateway
+      ec2_vpc_igw:
+        vpc_id: "{{ item.attachments.0.vpc_id }}"
+        state: absent
+      loop: "{{ igw.internet_gateways }}"
+
+    - ec2_vpc_subnet_info:
+        filters:
+          tag:environment: "example"
+      register: subnets
+
+    - name: remove vpc subnets
+      ec2_vpc_subnet:
+        state: absent
+        vpc_id: "{{ item.vpc_id }}"
+        cidr: "{{ item.cidr_block }}"
+      loop: "{{ subnets.subnets }}"
+
+    - ec2_vpc_net_info:
+        filters:
+          tag:environment: "example"
+      register: vpcs
+
+    # LKS: this fails with dependency errors. Maybe we need to delete
+    # routing tables explicitly?
+    - name: remove vpc networks
+      ec2_vpc_net:
+        state: absent
+        name: "{{ item.name }}"
+        cidr_block: "{{ item.cidr_block }}"
+      loop: "{{ vpcs.vpcs }}"

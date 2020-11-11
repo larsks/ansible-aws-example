@@ -1,0 +1,92 @@
+---
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: create ec2 ssh key
+      ec2_key:
+        name: lars_default
+        key_material: "{{ aws_ssh_key }}"
+
+    - name: create vpc network
+      ec2_vpc_net:
+        name: example
+        cidr_block: 10.10.10.0/24
+        region: us-east-1
+        tags:
+          environment: example
+      register: vpc
+
+    - debug:
+        var: vpc
+
+    - name: create vpc subnet
+      ec2_vpc_subnet:
+        vpc_id: "{{ vpc.vpc.id }}"
+        cidr: 10.10.10.0/28
+        tags:
+          environment: example
+      register: vpc_subnet
+
+    - debug:
+        var: vpc_subnet
+
+    - name: allow ssh in default security group
+      ec2_group:
+        name: default
+        description: default VPC security group
+        vpc_id: "{{ vpc.vpc.id }}"
+        rules:
+          - proto: tcp
+            ports:
+              - 22
+            cidr_ip: 0.0.0.0/0
+            rule_desc: allow public ssh
+
+    - name: create internet gw
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc.vpc.id }}"
+        tags:
+          environment: example
+      register: igw
+
+    - debug:
+        var: igw
+
+    - name: add default route to subnet
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc.vpc.id }}"
+        subnets:
+          - "{{ vpc_subnet.subnet.id }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ igw.gateway_id }}"
+
+    - name: create ec2 instance
+      ec2:
+        region: us-east-1
+        key_name: lars_default
+        instance_type: t2.micro
+        group: default
+        image: ami-0947d2ba12ee1ff75
+        vpc_subnet_id: "{{ vpc_subnet.subnet.id }}"
+        assign_public_ip: true
+        instance_tags:
+          environment: example
+        count_tag: environment
+        exact_count: 1
+      register: hostinfo
+
+    - debug:
+        var: hostinfo
+
+    - name: refresh inventory
+      meta: refresh_inventory
+
+- hosts: tag_environment_example
+  gather_facts: false
+  tasks:
+    - wait_for_connection:
+
+- hosts: tag_environment_example
+  tasks:
+    - ping:

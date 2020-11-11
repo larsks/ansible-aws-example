@@ -1,0 +1,14 @@
+plugin: aws_ec2
+regions:
+  - us-east-1
+  - us-east-2
+
+filters:
+  tag:environment: example
+
+keyed_groups:
+  - prefix: tag
+    key: tags
+
+compose:
+  ansible_user: '"ec2-user"'
